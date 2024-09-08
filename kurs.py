@@ -5,46 +5,48 @@ import schedule
 import time
 import psycopg2
 
-def pars():
-    r=requests.get("https://www.nationalbank.kz/ru/exchangerates/ezhednevnye-oficialnye-rynochnye-kursy-valyut")
-    s=r.text
+def pars_tabl():
 
-    soup = BeautifulSoup(s, 'html.parser')
+    def pars():
+        r=requests.get("https://www.nationalbank.kz/ru/exchangerates/ezhednevnye-oficialnye-rynochnye-kursy-valyut")
+        s=r.text
 
-    date=soup.find(class_="title-section")
+        soup = BeautifulSoup(s, 'html.parser')
 
-    usd=soup.find("td", string="USD / KZT").find_next_sibling().text
+        date=soup.find(class_="title-section")
+        print(date.text.strip(), usd)
 
-    global usd_title
-    global usd_date
-    global usd_cur
-    usd_title = date.text.strip()[:-15]
-    usd_date = date.text.strip()[39:]
-    usd_cur=usd
+        usd=soup.find("td", string="USD / KZT").find_next_sibling().text
 
-def tabl():
-    connection = psycopg2.connect(
-        dbname="kurs",
-        user="postgres",
-        password="Cgfkmybr36",
-        host="localhost",
-        port="5432"
-    )
-    cursor = connection.cursor()
+        global usd_title
+        global usd_date
+        global usd_cur
+        usd_title = date.text.strip()[:-15]
+        usd_date = date.text.strip()[39:]
+        usd_cur=usd
 
-    insert_query = """
-    INSERT INTO kurs(Title, Data, ex_rate)
-    VALUES(%s,%s,%s)
-    """
+    def tabl():
+        connection = psycopg2.connect(
+            dbname="kurs",
+            user="postgres",
+            password="Cgfkmybr36",
+            host="localhost",
+            port="5432"
+        )
+        cursor = connection.cursor()
 
-    data = (usd_title,usd_date,usd)
-    cursor.execute(insert_query,data)
-    connection.commit()
-    cursor.close()
-    connection.close()
+        insert_query = """
+        INSERT INTO kurs(Title, Data, ex_rate)
+        VALUES(%s,%s,%s)
+        """
 
-schedule.every().day.at("11:00").do(pars())
-schedule.every().day.at("11:03").do(tabl())
+        data = (usd_title,usd_date,usd)
+        cursor.execute(insert_query,data)
+        connection.commit()
+        cursor.close()
+        connection.close()
+
+schedule.every().day.at("15:14").do(pars_tabl)
 
 while True:
     schedule.run_pending()
