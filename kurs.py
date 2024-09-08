@@ -3,7 +3,7 @@ from bs4 import BeautifulSoup
 import sqlite3
 import schedule
 import time
-
+import psycopg2
 
 def pars():
     r=requests.get("https://www.nationalbank.kz/ru/exchangerates/ezhednevnye-oficialnye-rynochnye-kursy-valyut")
@@ -12,7 +12,6 @@ def pars():
     soup = BeautifulSoup(s, 'html.parser')
 
     date=soup.find(class_="title-section")
-# print(date.text.strip())
 
     usd=soup.find("td", string="USD / KZT").find_next_sibling().text
 
@@ -24,35 +23,28 @@ def pars():
     usd_cur=usd
 
 def tabl():
-    db=sqlite3.connect("baza.db")
-    c = db.cursor()
+    connection = psycopg2.connect(
+        dbname="kurs",
+        user="postgres",
+        password="Cgfkmybr36",
+        host="localhost",
+        port="5432"
+    )
+    cursor = connection.cursor()
 
-# c.execute("""CREATE TABLE dell(
-#     title text,
-#     chislo integer,
-#     cur integer
-#  )""")
+    insert_query = """
+    INSERT INTO kurs(Title, Data, ex_rate)
+    VALUES(%s,%s,%s)
+    """
 
+    data = (usd_title,usd_date,usd)
+    cursor.execute(insert_query,data)
+    connection.commit()
+    cursor.close()
+    connection.close()
 
-    c.execute("INSERT INTO dell(title,chislo,cur)"
-          "VALUES(?,?,?)",
-          (usd_title,usd_date,usd)
-          )
-
-    db.commit()
-    db.close()
-
-schedule.every().monday.at("11:00").do(pars())
-schedule.every().tuesday.at("11:00").do(pars())
-schedule.every().wednesday.at("11:00").do(pars())
-schedule.every().thursday.at("11:00").do(pars())
-schedule.every().friday.at("11:00").do(pars())
-
-schedule.every().monday.at("11:00:30").do(tabl())
-schedule.every().tuesday.at("11:00:30").do(tabl())
-schedule.every().wednesday.at("11:00:30").do(tabl())
-schedule.every().thursday.at("11:00:30").do(tabl())
-schedule.every().friday.at("11:00:30").do(tabl())
+schedule.every().day.at("11:00").do(pars())
+schedule.every().day.at("11:03").do(tabl())
 
 while True:
     schedule.run_pending()
