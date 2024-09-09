@@ -1,53 +1,82 @@
 import requests
 from bs4 import BeautifulSoup
-import sqlite3
 import schedule
 import time
 import psycopg2
 
-def pars_tabl():
+url = "https://www.nationalbank.kz/ru/exchangerates/ezhednevnye-oficialnye-rynochnye-kursy-valyut"
+bd = {
+    "dbname": "courses",
+    "user": "postgres",
+    "password": "Cgfkmybr36",
+    "host": "localhost",
+    "port": "5432"
+}
+def pars():
+    try:
+        r = requests.get(url)
+        if r.status_code == 200:
+            soup = BeautifulSoup(r.text, 'html.parser')
+            date = soup.find(class_="title-section").text.strip()
+            usd = soup.find("td", string="USD / KZT").find_next_sibling().text.strip()
 
-    def pars():
-        r=requests.get("https://www.nationalbank.kz/ru/exchangerates/ezhednevnye-oficialnye-rynochnye-kursy-valyut")
-        s=r.text
+            usd_title = date[:-15]
+            usd_date = date[39:]
+            usd_cur = usd
 
-        soup = BeautifulSoup(s, 'html.parser')
+            return usd_title, usd_date, usd_cur
+        else:
+            print("Данные с сайта получить не удалось.")
+            return None
+    except Exception as e:
+        print(f"Ошибка при парсинге данных: {e}")
+        return None
 
-        date=soup.find(class_="title-section")
-        print(date.text.strip(), usd)
-
-        usd=soup.find("td", string="USD / KZT").find_next_sibling().text
-
-        global usd_title
-        global usd_date
-        global usd_cur
-        usd_title = date.text.strip()[:-15]
-        usd_date = date.text.strip()[39:]
-        usd_cur=usd
-
-    def tabl():
-        connection = psycopg2.connect(
-            dbname="kurs",
-            user="postgres",
-            password="Cgfkmybr36",
-            host="localhost",
-            port="5432"
-        )
+def tabl():
+    try:
+        connection = psycopg2.connect(**bd)
         cursor = connection.cursor()
-
-        insert_query = """
-        INSERT INTO kurs(Title, Data, ex_rate)
-        VALUES(%s,%s,%s)
-        """
-
-        data = (usd_title,usd_date,usd)
-        cursor.execute(insert_query,data)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS courses (
+                id BIGSERIAL PRIMARY KEY,
+                title VARCHAR(75),
+                dt VARCHAR(15),
+                currency VARCHAR(15)
+            );
+        """)
         connection.commit()
-        cursor.close()
-        connection.close()
+        print("Таблица создана или уже существует.")
+    except Exception as e:
+        print(f"Ошибка при создании таблицы: {e}")
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
 
-schedule.every().day.at("15:14").do(pars_tabl)
+def ins_data(title, date, currency):
+    try:
+        connection = psycopg2.connect(**bd)
+        cursor = connection.cursor()
+        cursor.execute("""
+            INSERT INTO courses (title, dt, currency)
+            VALUES (%s, %s, %s);
+        """, (title, date, currency))
+        connection.commit()
+        print("Данные успешно сохранены в базу данных.")
+    except Exception as e:
+        print(f"Ошибка при вставке данных: {e}")
+    finally:
+        if connection:
+            cursor.close()
+            connection.close()
 
+def job():
+    tabl()
+    data = pars()
+    if data:
+        ins_data(*data)
+
+schedule.every().day.at("00:00").do(job)
 while True:
     schedule.run_pending()
     time.sleep(30)
